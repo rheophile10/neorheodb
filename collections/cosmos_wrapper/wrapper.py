@@ -2,6 +2,10 @@ from logging import error
 import azure.cosmos.cosmos_client as cosmos_client
 from datetime import datetime
 import re
+import sys
+import os
+import time
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 class NeoRheo():
     def __init__(self, HOST, MASTER_KEY, DATABASE_ID):
@@ -135,19 +139,26 @@ class NeoRheoCollection():
         self.pk = self.container.read()['uniqueKeyPolicy']['uniqueKeys'][0]['paths'][0].replace('/','')
         self.partition_key = self.container.read()['partitionKey']['paths'][0].replace('/','')
 
-    def read_id(self):
-        return self.container.read_item(item=self.pk, partition_key=self.partition_key)
+    def read_id(self, id, partition_key):
+        return self.container.read_item(item=id, partition_key=partition_key)
 
     def read_by_step(self, step=10):
         step = 50 if step > 50 else step
         return self.container.read_all_items(50)
 
+    def del_id(self, id, partition_key):
+        self.container.delete_item(item=id, partition_key=partition_key)
+
     def query(self, sql):
         #this is really limited because you can't join across collections
-        return list(self.container.query_items(sql,enable_cross_partition_query=True))
-
-    def del_id(self):
-        self.container.delete_item(item=self.pk, partition_key=self.partition_key)
+        try:
+            data = list(self.container.query_items(sql,enable_cross_partition_query=True))
+        except:
+            #for empty collections
+            self.insert({self.pk:1, self.partition_key:"placeholder"}) 
+            time.sleep(5)
+            data = list(self.container.query_items(sql,enable_cross_partition_query=True))
+        return data
     
     def insert(self, **kwargs):
         if self.schema.check_kwargs_against_schema(kwargs):

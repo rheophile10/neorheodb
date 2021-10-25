@@ -1,6 +1,9 @@
 from .cosmos_wrapper.wrapper  import NeoRheoCollection, Schema
 import hashlib
 from datetime import datetime
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 class Apps(NeoRheoCollection):
     def __init__(self, HOST, MASTER_KEY, DATABASE_ID):
@@ -46,9 +49,9 @@ class Users(NeoRheoCollection):
         return user_details
 
     def _compare_passwords(self, password, user_details):
-        password = password.encode('utf8')
+        password = password.encode('utf-8')
         password = hashlib.blake2b(password).hexdigest()
-        return user_details['password'] == password
+        return user_details[0]['password'] == password
 
     def check_user_details_validity(self, email, password, badpassword):
         email = email.lower()
@@ -61,9 +64,11 @@ class Users(NeoRheoCollection):
         if len(user_details)==0:
             return (False, 'unregistered email')
         elif not(self._compare_passwords(password, user_details)):
-            badpassword.count_bad_password(email = user_details[0]['email'])
-            return (False,'wrong password')
-        return (True, user_details['user_id'])
+            if badpassword.count_bad_attempt(email = user_details[0]['email']):
+                return (False,'wrong password - warning you are allowed 3 bad login attempts every 3 hours')
+            else:
+                return (False, 'brute force attempted - account frozen for 3 hours')
+        return (True, user_details[0]['user_id'])
 
     def register_user(self, email, password, user_name):
         schema_errors = self.schema.check_kwargs_against_schema(comprehensive= False, email = email, password=password, user_name=user_name)
@@ -83,12 +88,15 @@ class BadPassword(NeoRheoCollection):
         self.date = datetime.utcnow().strftime("%d/%m/%y")
     
     def check_brute_force(self, email):
-        sql = f"SELECT b.id from b where b.email='{email}' and b.date = '{self.date}'"
+        sql = f"SELECT b.badpassword_id from b where b.email='{email}'"
         attempt_count = len(self.query(sql))
         return attempt_count<4
             
     def count_bad_attempt(self, email):
-        self.insert(email=email, date=self.date)
+        no_brute_force = self.check_brute_force(email)
+        if no_brute_force:
+            self.insert(email=email, date=self.date)
+        return no_brute_force
 
 class TokenService(NeoRheoCollection):
     def __init__(self, HOST, MASTER_KEY, DATABASE_ID):

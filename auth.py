@@ -1,4 +1,7 @@
 from .collections.auth_collections import Apps, Permissions, Roles, TokenService, Users, BadPassword
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 class UserAuthentication():
     def __init__(self, HOST, MASTER_KEY, DATABASE_ID):
